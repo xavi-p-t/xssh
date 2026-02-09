@@ -1,121 +1,672 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:xssh/ssh_service.dart';
+import 'package:xssh/SaveServer.dart';
+import 'package:xssh/inputPers.dart';
+import 'package:xssh/portRules.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const SshTunelApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class SshTunelApp extends StatelessWidget {
+  const SshTunelApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      debugShowCheckedModeBanner: false,
+      title: 'XSSH',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color.fromARGB(255, 212, 64, 96)),
+        useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const MainLayout(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class MainLayout extends StatefulWidget {
+  const MainLayout({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<MainLayout> createState() => _MainLayoutState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _MainLayoutState extends State<MainLayout> {
+  // Campos del formulario
+  String host = '';
+  String user = '';
+  int port = 0;
+  String? privateKeyPath;
 
-  void _incrementCounter() {
+  // Aquí luego meteremos SshService, de momento solo print
+  bool isConnecting = false;
+  late TextEditingController privateKeyController;
+
+  final ssh = SshService();
+
+  List<String> logs = [];
+  List<UserData> userDataList = [];
+  List<PortRule> rules = [];
+
+  void addRule() {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      rules.add(PortRule());
+    });
+  } 
+
+  void removeRule(int index) {
+    setState(() {
+      rules.removeAt(index);
     });
   }
 
+
+
+  void addLog(String msg) {
+    setState(() {
+      logs.add(msg);
+    });
+  }
+
+
+  @override
+  void initState() {
+    super.initState();
+    privateKeyController = TextEditingController();
+    _loadUserData();
+  }
+
+  void _loadUserData() async {
+    userDataList = await Storage.loadUserData();
+    setState(() {});
+  }
+
+  void saveConnection() {
+    String name = user;
+    String server = host;
+    int ports = port;
+    String? key = privateKeyPath;
+    
+
+    if (name.isEmpty || server.isEmpty || port == 0) {
+        
+       return;
+     }
+
+    
+
+    final newUser = UserData(name: name, server: server, port: port, key: key,rules: List.from(rules),);
+
+    if (userDataList.any(
+         (user) => user.name == newUser.name && user.server == newUser.server)) {
+      
+       return;
+    }
+
+    userDataList.add(newUser);
+    Storage.saveUserData(userDataList);
+    _loadUserData();
+   
+  }
+
+  void removeConnection(int index) {
+    userDataList.removeAt(index);
+    Storage.saveUserData(userDataList);
+    _loadUserData();
+  }
+
+  void onSelectConnection(UserData data) {
+  setState(() {
+    host = data.server;
+    user = data.name;
+    port = data.port;
+    privateKeyPath = data.key;
+    privateKeyController.text = data.key ?? '';
+    rules = List.from(data.rules);
+  });
+}
+
+
+  void onHostChanged(String value) => setState(() => host = value);
+  void onUserChanged(String value) => setState(() => user = value);
+  void onPortChanged(String value) {
+    final parsed = int.tryParse(value);
+    if (parsed != null) {
+      setState(() => port = parsed);
+    }
+  }
+
+  void onPrivateKeySelected(String path) {
+  setState(() {
+    privateKeyPath = path;
+    privateKeyController.text = path;
+  });
+}
+
+
+  Future<void> onActivatePressed() async {
+  if (host.isEmpty || user.isEmpty || privateKeyPath == null) {
+    addLog('[error] Missing data');
+    return;
+  }
+
+  setState(() => isConnecting = true);
+
+  await ssh.connect(
+    host: host,
+    port: port,
+    username: user,
+    privateKeyPath: privateKeyPath!,
+    onLog: addLog,
+  );
+
+  setState(() => isConnecting = false);
+}
+
+Future<void> onDeactivatePressed() async {
+  await ssh.disconnect(onLog: addLog);
+}
+
+
+
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Escala basada en el ancho de la ventana
+        final scale = (constraints.maxWidth / 1400).clamp(0.5, 1.0);
+
+        return FittedBox(
+          alignment: Alignment.topLeft,
+          fit: BoxFit.none,
+          child: Transform.scale(
+            scale: scale,
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: constraints.maxWidth / scale,
+              height: constraints.maxHeight / scale,
+              child: Scaffold(
+                body: Row(
+                  children: [
+                    _LeftPanel(
+                      saveConnection: saveConnection,
+                      userDataList: userDataList,
+                      removeConnection: removeConnection,
+                      onSelectConnection: onSelectConnection,
+                    ),
+                    const VerticalDivider(width: 1),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: _RightPanel(
+                              host: host,
+                              user: user,
+                              port: port,
+                              privateKeyPath: privateKeyPath,
+                              privateKeyController: privateKeyController,
+                              onHostChanged: onHostChanged,
+                              onUserChanged: onUserChanged,
+                              onPortChanged: onPortChanged,
+                              onPrivateKeySelected: onPrivateKeySelected,
+                              onActivate: onActivatePressed,
+                              isConnecting: isConnecting,
+                              logs: logs,
+                              rules: rules,
+                              onAddRule: addRule,
+                              onRemoveRule: removeRule,
+                            ),
+                          ),
+                          _BottomBar(
+                            onDeactivate: onDeactivatePressed,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+}
+
+
+class _LeftPanel extends StatelessWidget {
+  final List<UserData> userDataList;
+  final VoidCallback saveConnection;
+  final void Function(int) removeConnection;
+  final void Function(UserData) onSelectConnection;
+
+  const _LeftPanel({
+    super.key,
+    required this.saveConnection,
+    required this.userDataList,
+    required this.removeConnection,
+    required this.onSelectConnection,
+    });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 260,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('SSH Configurations',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                    //boton añadir
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: saveConnection,
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.builder(
+              itemCount:userDataList.length,
+              itemBuilder: (context, index) {
+                bool hovering = false;
+                final user = userDataList[index];
+                return StatefulBuilder(
+                  builder: (context, setState) {
+                    return MouseRegion(
+                      onEnter: (context) => setState(() => hovering = true),
+                      onExit: (context) => setState(() => hovering = false),
+                      child: ListTile(
+                        title: Text(user.name),
+                        subtitle:Text(user.server),
+                        leading: const Icon(Icons.cloud),
+                        trailing: hovering
+                            ? IconButton(
+                                icon: const Icon(Icons.delete),
+                                onPressed: () => removeConnection(index),
+                              )
+                            : null,
+                        selected: index == 0,
+                        onTap: () {
+                          onSelectConnection(user);
+                        },
+                      ),
+                    );
+                  },
+                );
+              }
+            ),
+          ),
+        ],
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+    );
+  }
+}
+
+class _RightPanel extends StatelessWidget {
+  final String host;
+  final String user;
+  final int port;
+  final String? privateKeyPath;
+  final ValueChanged<String> onHostChanged;
+  final ValueChanged<String> onUserChanged;
+  final ValueChanged<String> onPortChanged;
+  final ValueChanged<String> onPrivateKeySelected;
+  final VoidCallback onActivate;
+  final bool isConnecting;
+  final TextEditingController privateKeyController;
+  final List<String> logs;
+  final List<PortRule> rules;
+  final void Function() onAddRule;
+  final void Function(int) onRemoveRule;
+
+
+
+  const _RightPanel({
+    super.key,
+    required this.host,
+    required this.user,
+    required this.port,
+    required this.privateKeyPath,
+    required this.onHostChanged,
+    required this.onUserChanged,
+    required this.onPortChanged,
+    required this.onPrivateKeySelected,
+    required this.onActivate,
+    required this.isConnecting,
+    required this.privateKeyController,
+    required this.logs,
+    required this.rules,
+    required this.onAddRule,
+    required this.onRemoveRule,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _ConnectionForm(
+          host: host,
+          user: user,
+          port: port,
+          privateKeyPath: privateKeyPath,
+          privateKeyController: privateKeyController,
+          onHostChanged: onHostChanged,
+          onUserChanged: onUserChanged,
+          onPortChanged: onPortChanged,
+          onPrivateKeySelected: onPrivateKeySelected,
+          onActivate: onActivate,
+          isConnecting: isConnecting,
+        ),
+        
+        Expanded(
+          flex: 2,
+          child: PortRules(
+            rules: rules,
+            onAddRule: onAddRule,
+            onRemoveRule: onRemoveRule,
+          ),
+        ),
+        Expanded(
+          flex: 1,
+          child: _LogOutput(logs: logs),
+        ),
+
+      ],
+    );
+  }
+}
+
+
+class _ConnectionForm extends StatelessWidget {
+  final String host;
+  final String user;
+  final int port;
+  final String? privateKeyPath;
+  final TextEditingController privateKeyController;
+  final ValueChanged<String> onHostChanged;
+  final ValueChanged<String> onUserChanged;
+  final ValueChanged<String> onPortChanged;
+  final ValueChanged<String> onPrivateKeySelected;
+  final VoidCallback onActivate;
+  final bool isConnecting;
+
+  const _ConnectionForm({
+  super.key,
+  required this.host,
+  required this.user,
+  required this.port,
+  required this.privateKeyPath,
+  required this.privateKeyController,
+  required this.onHostChanged,
+  required this.onUserChanged,
+  required this.onPortChanged,
+  required this.onPrivateKeySelected,
+  required this.onActivate,
+  required this.isConnecting,
+});
+
+
+  Future<void> _pickPrivateKey(BuildContext context) async {
+  final result = await FilePicker.platform.pickFiles(
+    dialogTitle: 'Select private key',
+    type: FileType.any,
+  );
+
+  if (result != null && result.files.single.path != null) {
+    onPrivateKeySelected(result.files.single.path!);
+  }
+}
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color.fromARGB(82, 188, 186, 186),        // Fondo oscuro
+          borderRadius: BorderRadius.circular(12),
+          //border: Border.all(color: Colors.grey.shade700),
+        ),
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'CONNECTION DETAILS',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    //color: Colors.white,
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: isConnecting ? null : onActivate,
+                  child: Text(isConnecting ? 'Connecting...' : 'Activate'),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+
+            // HOST
+            Row(
+              children: [
+                const SizedBox(
+                  width: 80,
+                  child: Text(
+                    'HOST',
+                    //style: TextStyle(color: Color.fromARGB(179, 0, 0, 0)),
+                  ),
+                ),
+                Expanded(
+                  child: TextField(
+                    decoration: darkInput('Enter host'),
+                    onChanged: onHostChanged,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // USER
+            Row(
+              children: [
+                const SizedBox(
+                  width: 80,
+                  child: Text(
+                    'USER',
+                    //style: TextStyle(color: Colors.white70),
+                  ),
+                ),
+                Expanded(
+                  child: TextField(
+                    decoration: darkInput('Enter user'),
+                    onChanged: onUserChanged,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // PORT
+            Row(
+              children: [
+                const SizedBox(
+                  width: 80,
+                  child: Text(
+                    'PORT',
+                    //style: TextStyle(color: Colors.white70),
+                  ),
+                ),
+                SizedBox(
+                  width: 120,
+                  child: TextField(
+                    decoration: darkInput('22'),
+                    keyboardType: TextInputType.number,
+                    onChanged: onPortChanged,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // PRIVATE KEY
+            Row(
+              children: [
+                const SizedBox(
+                  width: 80,
+                  child: Text(
+                    'KEY',
+                    //style: TextStyle(color: Colors.white70),
+                  ),
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: privateKeyController,
+                    readOnly: true,
+                    decoration: darkInput('Select key'),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.folder_open, color: Colors.white70),
+                  onPressed: () => _pickPrivateKey(context),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                Checkbox(
+                  value: true,
+                  onChanged: (_) {},
+                  checkColor: Colors.black,
+                  activeColor: Colors.white,
+                ),
+                const Text('Reconnect automatically', style: TextStyle(color: Color.fromARGB(179, 0, 0, 0))),
+              ],
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+    );
+  }
+}
+
+
+
+
+
+
+
+class _LogOutput extends StatelessWidget {
+  final List<String> logs;
+
+  const _LogOutput({super.key, required this.logs});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('SSH Output',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              TextButton(
+                onPressed: () {},
+                child: const Text('Clear'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: Container(
+              color: const Color.fromARGB(255, 255, 255, 255),
+              padding: const EdgeInsets.all(8),
+              child: SingleChildScrollView(
+                child: Text(
+                  logs.join("\n"),
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    color: Color.fromARGB(255, 0, 0, 0),
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BottomBar extends StatelessWidget {
+  final VoidCallback onDeactivate;
+
+  const _BottomBar({
+    super.key,
+    required this.onDeactivate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: Colors.grey.shade300)),
+      ),
+      child: Row(
+        children: [
+          // ElevatedButton(onPressed: () {}, child: const Text('Activate')),
+          // const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: onDeactivate,
+            child: const Text('Desactivate'),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(onPressed: () {}, child: const Text('Refresh')),
+          const Spacer(),
+          const Text('Status:'),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.green.shade100,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.circle, size: 10, color: Colors.green.shade700),
+                const SizedBox(width: 6),
+                Text('Connected', style: TextStyle(color: Colors.green.shade800)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
