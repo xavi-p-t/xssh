@@ -7,12 +7,22 @@ class PortRule {
   String destHost;
   String destPort;
 
+  late TextEditingController nameController; 
+  late TextEditingController localPortController; 
+  late TextEditingController destHostController; 
+  late TextEditingController destPortController;
+
   PortRule({
     this.name = '',
     this.localPort = '',
     this.destHost = '',
     this.destPort = '',
-  });
+  }) { 
+    nameController = TextEditingController(text: name); 
+    localPortController = TextEditingController(text: localPort); 
+    destHostController = TextEditingController(text: destHost); 
+    destPortController = TextEditingController(text: destPort); 
+  }
 
   Map<String, dynamic> toJson() => {
     'name': name,
@@ -22,12 +32,13 @@ class PortRule {
   };
 
   static PortRule fromJson(Map<String, dynamic> json) {
-    return PortRule(
+    final rule = PortRule(
       name: json['name'] ?? '',
       localPort: json['localPort'] ?? '',
       destHost: json['destHost'] ?? '',
       destPort: json['destPort'] ?? '',
     );
+    return rule;
   }
 }
 
@@ -35,6 +46,7 @@ class PortRules extends StatelessWidget {
   final List<PortRule> rules;
   final void Function() onAddRule;
   final void Function(int) onRemoveRule;
+
 
   const PortRules({
     super.key,
@@ -78,6 +90,7 @@ class PortRules extends StatelessWidget {
                         SizedBox(
                           width: 120,
                           child: TextField(
+                            controller: rule.nameController,
                             decoration: darkInput('Name'),
                             onChanged: (v) => rule.name = v,
                           ),
@@ -90,6 +103,7 @@ class PortRules extends StatelessWidget {
                         SizedBox(
                           width: 80,
                           child: TextField(
+                            controller: rule.localPortController,
                             decoration: darkInput('1234'),
                             onChanged: (v) => rule.localPort = v,
                           ),
@@ -104,6 +118,7 @@ class PortRules extends StatelessWidget {
                         SizedBox(
                           width: 150,
                           child: TextField(
+                            controller: rule.destHostController,
                             decoration: darkInput('Host'),
                             onChanged: (v) => rule.destHost = v,
                           ),
@@ -114,6 +129,7 @@ class PortRules extends StatelessWidget {
                         SizedBox(
                           width: 80,
                           child: TextField(
+                            controller: rule.destPortController,
                             decoration: darkInput('Port'),
                             onChanged: (v) => rule.destPort = v,
                           ),

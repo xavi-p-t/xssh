@@ -43,6 +43,10 @@ class _MainLayoutState extends State<MainLayout> {
   // Aquí luego meteremos SshService, de momento solo print
   bool isConnecting = false;
   late TextEditingController privateKeyController;
+  late TextEditingController hostController;
+  late TextEditingController userController;
+  late TextEditingController portController;
+
 
   final ssh = SshService();
 
@@ -75,6 +79,9 @@ class _MainLayoutState extends State<MainLayout> {
   void initState() {
     super.initState();
     privateKeyController = TextEditingController();
+    hostController = TextEditingController();
+    userController = TextEditingController();
+    portController = TextEditingController();
     _loadUserData();
   }
 
@@ -99,13 +106,16 @@ class _MainLayoutState extends State<MainLayout> {
 
     final newUser = UserData(name: name, server: server, port: port, key: key,rules: List.from(rules),);
 
-    if (userDataList.any(
-         (user) => user.name == newUser.name && user.server == newUser.server)) {
-      
-       return;
+    final index = userDataList.indexWhere
+      ( (u) => u.name == newUser.name && u.server == newUser.server, 
+    ); 
+    
+    if (index != -1) { 
+      userDataList[index] = newUser; } 
+    else { 
+      userDataList.add(newUser); 
     }
 
-    userDataList.add(newUser);
     Storage.saveUserData(userDataList);
     _loadUserData();
    
@@ -123,6 +133,10 @@ class _MainLayoutState extends State<MainLayout> {
     user = data.name;
     port = data.port;
     privateKeyPath = data.key;
+
+    hostController.text = data.server; 
+    userController.text = data.name; 
+    portController.text = data.port.toString();
     privateKeyController.text = data.key ?? '';
     rules = List.from(data.rules);
   });
@@ -207,6 +221,9 @@ Future<void> onDeactivatePressed() async {
                               port: port,
                               privateKeyPath: privateKeyPath,
                               privateKeyController: privateKeyController,
+                              hostController: hostController,
+                              userController: userController,
+                              portController: portController,
                               onHostChanged: onHostChanged,
                               onUserChanged: onUserChanged,
                               onPortChanged: onPortChanged,
@@ -324,6 +341,9 @@ class _RightPanel extends StatelessWidget {
   final VoidCallback onActivate;
   final bool isConnecting;
   final TextEditingController privateKeyController;
+  final TextEditingController hostController;
+  final TextEditingController userController;
+  final TextEditingController portController;
   final List<String> logs;
   final List<PortRule> rules;
   final void Function() onAddRule;
@@ -344,6 +364,9 @@ class _RightPanel extends StatelessWidget {
     required this.onActivate,
     required this.isConnecting,
     required this.privateKeyController,
+    required this.hostController,
+    required this.userController,
+    required this.portController,
     required this.logs,
     required this.rules,
     required this.onAddRule,
@@ -360,6 +383,9 @@ class _RightPanel extends StatelessWidget {
           port: port,
           privateKeyPath: privateKeyPath,
           privateKeyController: privateKeyController,
+          hostController: hostController,
+          userController: userController,
+          portController: portController,
           onHostChanged: onHostChanged,
           onUserChanged: onUserChanged,
           onPortChanged: onPortChanged,
@@ -393,6 +419,9 @@ class _ConnectionForm extends StatelessWidget {
   final int port;
   final String? privateKeyPath;
   final TextEditingController privateKeyController;
+  final TextEditingController hostController;
+  final TextEditingController userController;
+  final TextEditingController portController;
   final ValueChanged<String> onHostChanged;
   final ValueChanged<String> onUserChanged;
   final ValueChanged<String> onPortChanged;
@@ -407,6 +436,9 @@ class _ConnectionForm extends StatelessWidget {
   required this.port,
   required this.privateKeyPath,
   required this.privateKeyController,
+  required this.hostController,
+  required this.userController,
+  required this.portController,
   required this.onHostChanged,
   required this.onUserChanged,
   required this.onPortChanged,
@@ -474,6 +506,7 @@ class _ConnectionForm extends StatelessWidget {
                 ),
                 Expanded(
                   child: TextField(
+                    controller: hostController,
                     decoration: darkInput('Enter host'),
                     onChanged: onHostChanged,
                   ),
@@ -495,6 +528,7 @@ class _ConnectionForm extends StatelessWidget {
                 ),
                 Expanded(
                   child: TextField(
+                    controller: userController,
                     decoration: darkInput('Enter user'),
                     onChanged: onUserChanged,
                   ),
@@ -517,6 +551,7 @@ class _ConnectionForm extends StatelessWidget {
                 SizedBox(
                   width: 120,
                   child: TextField(
+                    controller: portController,
                     decoration: darkInput('22'),
                     keyboardType: TextInputType.number,
                     onChanged: onPortChanged,
