@@ -96,7 +96,7 @@ class _MainLayoutState extends State<MainLayout> {
     int ports = port;
     String? key = privateKeyPath;
     
-
+    
     if (name.isEmpty || server.isEmpty || port == 0) {
         
        return;
@@ -173,6 +173,7 @@ class _MainLayoutState extends State<MainLayout> {
     port: port,
     username: user,
     privateKeyPath: privateKeyPath!,
+    rules: rules,
     onLog: addLog,
   );
 
