@@ -42,6 +42,7 @@ class _MainLayoutState extends State<MainLayout> {
 
   // Aquí luego meteremos SshService, de momento solo print
   bool isConnecting = false;
+  bool connected = false;
   late TextEditingController privateKeyController;
   late TextEditingController hostController;
   late TextEditingController userController;
@@ -161,28 +162,30 @@ class _MainLayoutState extends State<MainLayout> {
 
 
   Future<void> onActivatePressed() async {
-  if (host.isEmpty || user.isEmpty || privateKeyPath == null) {
-    addLog('[error] Missing data');
-    return;
+    if (host.isEmpty || user.isEmpty || privateKeyPath == null) {
+      addLog('[error] Missing data');
+      return;
+    }
+
+    setState(() => isConnecting = true);
+
+    await ssh.connect(
+      host: host,
+      port: port,
+      username: user,
+      privateKeyPath: privateKeyPath!,
+      rules: rules,
+      onLog: addLog,
+    );
+
+    setState(() => isConnecting = false);
+    connected = ssh.getIsConnected();
   }
 
-  setState(() => isConnecting = true);
-
-  await ssh.connect(
-    host: host,
-    port: port,
-    username: user,
-    privateKeyPath: privateKeyPath!,
-    rules: rules,
-    onLog: addLog,
-  );
-
-  setState(() => isConnecting = false);
-}
-
-Future<void> onDeactivatePressed() async {
-  await ssh.disconnect(onLog: addLog);
-}
+  Future<void> onDeactivatePressed() async {
+    await ssh.disconnect(onLog: addLog);
+    connected = ssh.getIsConnected();
+  }
 
 
 
@@ -210,6 +213,7 @@ Future<void> onDeactivatePressed() async {
                       userDataList: userDataList,
                       removeConnection: removeConnection,
                       onSelectConnection: onSelectConnection,
+                      connected: connected,
                     ),
                     const VerticalDivider(width: 1),
                     Expanded(
@@ -239,6 +243,7 @@ Future<void> onDeactivatePressed() async {
                           ),
                           _BottomBar(
                             onDeactivate: onDeactivatePressed,
+                            isConnecting:connected,
                           ),
                         ],
                       ),
@@ -261,6 +266,7 @@ class _LeftPanel extends StatelessWidget {
   final VoidCallback saveConnection;
   final void Function(int) removeConnection;
   final void Function(UserData) onSelectConnection;
+  final bool connected;
 
   const _LeftPanel({
     super.key,
@@ -268,6 +274,7 @@ class _LeftPanel extends StatelessWidget {
     required this.userDataList,
     required this.removeConnection,
     required this.onSelectConnection,
+    required this.connected,
     });
 
   @override
@@ -306,7 +313,7 @@ class _LeftPanel extends StatelessWidget {
                       child: ListTile(
                         title: Text(user.name),
                         subtitle:Text(user.server),
-                        leading: const Icon(Icons.cloud),
+                        leading:  Icon(Icons.circle, size: 10, color: connected ? Colors.green.shade700:Colors.red.shade700),
                         trailing: hovering
                             ? IconButton(
                                 icon: const Icon(Icons.delete),
@@ -581,7 +588,7 @@ class _ConnectionForm extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.folder_open, color: Colors.white70),
+                  icon: const Icon(Icons.folder_open, color: Color.fromARGB(255, 0, 0, 0)),
                   onPressed: () => _pickPrivateKey(context),
                 ),
               ],
@@ -613,10 +620,21 @@ class _ConnectionForm extends StatelessWidget {
 
 
 
-class _LogOutput extends StatelessWidget {
+class _LogOutput extends StatefulWidget {
   final List<String> logs;
 
   const _LogOutput({super.key, required this.logs});
+
+  @override
+  State<_LogOutput> createState() => _LogOutputState();
+}
+
+class _LogOutputState extends State<_LogOutput> {
+  void cleanLog() {
+    setState(() {
+      widget.logs.clear();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -631,7 +649,7 @@ class _LogOutput extends StatelessWidget {
               const Text('SSH Output',
                   style: TextStyle(fontWeight: FontWeight.bold)),
               TextButton(
-                onPressed: () {},
+                onPressed: cleanLog,
                 child: const Text('Clear'),
               ),
             ],
@@ -643,7 +661,7 @@ class _LogOutput extends StatelessWidget {
               padding: const EdgeInsets.all(8),
               child: SingleChildScrollView(
                 child: Text(
-                  logs.join("\n"),
+                  widget.logs.join("\n"),
                   style: const TextStyle(
                     fontFamily: 'monospace',
                     color: Color.fromARGB(255, 0, 0, 0),
@@ -661,10 +679,12 @@ class _LogOutput extends StatelessWidget {
 
 class _BottomBar extends StatelessWidget {
   final VoidCallback onDeactivate;
+  final bool isConnecting;
 
   const _BottomBar({
     super.key,
     required this.onDeactivate,
+    required this.isConnecting,
   });
 
   @override
@@ -691,14 +711,14 @@ class _BottomBar extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.green.shade100,
+              color: isConnecting ? Colors.green.shade100 : Colors.red.shade100 ,
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
               children: [
-                Icon(Icons.circle, size: 10, color: Colors.green.shade700),
+                Icon(Icons.circle, size: 10, color: isConnecting ? Colors.green.shade700:Colors.red.shade700),
                 const SizedBox(width: 6),
-                Text('Connected', style: TextStyle(color: Colors.green.shade800)),
+                Text(isConnecting ?'Connected':'Disconnected', style: TextStyle(color: isConnecting ? Colors.green.shade800:Colors.red.shade800)),
               ],
             ),
           ),

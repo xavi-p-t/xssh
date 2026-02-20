@@ -9,6 +9,10 @@ class SshService {
   final List<ServerSocket> _localServers = [];
 
   bool get isConnected => _client != null;
+  
+  getIsConnected(){
+    return isConnected;
+  }
 
   Future<void> connect({
   required String host,
@@ -72,13 +76,14 @@ class SshService {
               localSocket.destroy();
             }
           });
+          
         } catch (e) {
           // Error típico: el puerto local ya está ocupado por otra app
           onLog('[error] Failed to bind local port $localPort (${rule.name}): $e');
         }
       }
       // --- FIN LÓGICA DE TÚNELES ---
-
+    
   } catch (e) {
     onLog('[error] $e');
     disconnect(onLog: onLog);
