@@ -48,6 +48,8 @@ class _MainLayoutState extends State<MainLayout> {
   late TextEditingController userController;
   late TextEditingController portController;
 
+  int? selectedIndex;
+
 
   final ssh = SshService();
 
@@ -91,57 +93,103 @@ class _MainLayoutState extends State<MainLayout> {
     setState(() {});
   }
 
-  void saveConnection() {
-    String name = user;
-    String server = host;
-    int ports = port;
-    String? key = privateKeyPath;
-    
-    
-    if (name.isEmpty || server.isEmpty || port == 0) {
-        
-       return;
-     }
+  void createNewConnection() {
+    final newConnection = UserData(
+      name: 'Sin nombre', 
+      server: '', 
+      port: 0, 
+      key: null, 
+      rules: []
+    );
 
+    setState(() {
+      userDataList.add(newConnection);
+      
+      selectedIndex = userDataList.length - 1; 
+    });
     
+    Storage.saveUserData(userDataList);
+    onSelectConnection(newConnection, selectedIndex!);
+  }
 
-    final newUser = UserData(name: name, server: server, port: port, key: key,rules: List.from(rules),);
-
-    final index = userDataList.indexWhere
-      ( (u) => u.name == newUser.name && u.server == newUser.server, 
-    ); 
-    
-    if (index != -1) { 
-      userDataList[index] = newUser; } 
-    else { 
-      userDataList.add(newUser); 
+  void refreshConnection(){
+    if (selectedIndex == null){
+      return;
     }
 
+    setState(() {
+      final savedData = userDataList[selectedIndex!];
+
+      onSelectConnection(savedData, selectedIndex!);
+    });
+  }
+
+  void saveConnection() {
+    if (selectedIndex == null) return; 
+
+    
+    String name = userController.text.isNotEmpty ? userController.text : 'Sin nombre';
+    String server = hostController.text;
+    int ports = int.tryParse(portController.text) ?? 22;
+    String? key = privateKeyPath;
+
+    final updatedUser = UserData(
+      name: name, 
+      server: server, 
+      port: ports, 
+      key: key, 
+      rules: List.from(rules),
+    );
+
+    setState(() {
+      
+      userDataList[selectedIndex!] = updatedUser;
+      
+      
+      user = name;
+      host = server;
+      port = ports;
+    });
+
     Storage.saveUserData(userDataList);
-    _loadUserData();
-   
+    addLog('[info] Configuración guardada correctamente.');
   }
 
   void removeConnection(int index) {
-    userDataList.removeAt(index);
+    setState(() {
+      userDataList.removeAt(index);
+      
+      if (selectedIndex == index) {
+        selectedIndex = null;
+        hostController.clear();
+        userController.clear();
+        portController.clear();
+        privateKeyController.clear();
+        rules.clear();
+      } else if (selectedIndex != null && index < selectedIndex!) {
+        
+        selectedIndex = selectedIndex! - 1;
+      }
+    });
     Storage.saveUserData(userDataList);
-    _loadUserData();
   }
 
-  void onSelectConnection(UserData data) {
-  setState(() {
-    host = data.server;
-    user = data.name;
-    port = data.port;
-    privateKeyPath = data.key;
+ void onSelectConnection(UserData data, int index) {
+    setState(() {
+      selectedIndex = index; 
+      
+      host = data.server;
+      user = data.name;
+      port = data.port;
+      privateKeyPath = data.key;
 
-    hostController.text = data.server; 
-    userController.text = data.name; 
-    portController.text = data.port.toString();
-    privateKeyController.text = data.key ?? '';
-    rules = List.from(data.rules);
-  });
-}
+      hostController.text = data.server; 
+      userController.text = data.name; 
+      portController.text = data.port.toString();
+      privateKeyController.text = data.key ?? '';
+      rules = List.from(data.rules);
+    });
+  }
 
 
   void onHostChanged(String value) => setState(() => host = value);
@@ -154,33 +202,120 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   void onPrivateKeySelected(String path) {
-  setState(() {
-    privateKeyPath = path;
-    privateKeyController.text = path;
-  });
-}
-
+    setState(() {
+      privateKeyPath = path;
+      privateKeyController.text = path;
+    });
+  }
 
   Future<void> onActivatePressed() async {
-    if (host.isEmpty || user.isEmpty || privateKeyPath == null) {
-      addLog('[error] Missing data');
+    // Relajamos un poco la validación por si ahora usan contraseña en vez de llave
+    if (host.isEmpty || user.isEmpty) {
+      addLog('[error] Missing data (Host or User)');
       return;
     }
 
+    // --- 1. LANZAMOS EL POP-UP DE CONTRASEÑA ---
+    final String? password = await showDialog<String>(
+      context: context,
+      barrierDismissible: false, // Obliga al usuario a pulsar un botón para salir
+      builder: (BuildContext dialogContext) {
+        final pwdController = TextEditingController();
+        
+        return AlertDialog(
+          backgroundColor: const Color.fromARGB(255, 50, 50, 50), // Fondo oscuro
+          title: const Text(
+            'Authentication Required', 
+            style: TextStyle(color: Colors.white, fontSize: 18)
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min, // Para que el pop-up no ocupe toda la pantalla
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Host: $host', style: const TextStyle(color: Colors.white70)),
+              Text('User: $user', style: const TextStyle(color: Colors.white70)),
+              Text('Port: $port', style: const TextStyle(color: Colors.white70)),
+              const SizedBox(height: 20),
+              TextField(
+                controller: pwdController,
+                obscureText: true, // Oculta el texto con asteriscos
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Password',
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24)
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Color.fromARGB(255, 212, 64, 96))
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(null), // Devuelve null si cancela
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(pwdController.text), // Devuelve el texto
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color.fromARGB(255, 212, 64, 96),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Accept'),
+            ),
+          ],
+        );
+      },
+    );
+
+    // --- 2. COMPROBAMOS QUÉ HA HECHO EL USUARIO ---
+    if (password == null) {
+      // El usuario le dio a "Cancel" o intentó cerrar el pop-up
+      addLog('[info] Connection cancelled by user.');
+      return; 
+    }
+
+    // Si llega aquí, es que le dio a "Accept" (la contraseña puede estar vacía o llena)
     setState(() => isConnecting = true);
 
+    // --- 3. NOS CONECTAMOS PASÁNDOLE LA CONTRASEÑA ---
     await ssh.connect(
       host: host,
       port: port,
       username: user,
-      privateKeyPath: privateKeyPath!,
-      rules: rules,
+      privateKeyPath: privateKeyPath, // Sigue siendo útil si combinan llave + password
+      password: password, // <-- NUEVO PARÁMETRO
+      rules: rules, 
       onLog: addLog,
     );
 
     setState(() => isConnecting = false);
     connected = ssh.getIsConnected();
   }
+
+  // Future<void> onActivatePressed() async {
+  //   if (host.isEmpty || user.isEmpty || privateKeyPath == null) {
+  //     addLog('[error] Missing data');
+  //     return;
+  //   }
+
+  //   setState(() => isConnecting = true);
+
+  //   await ssh.connect(
+  //     host: host,
+  //     port: port,
+  //     username: user,
+  //     privateKeyPath: privateKeyPath!,
+  //     rules: rules,
+  //     onLog: addLog,
+  //   );
+
+  //   setState(() => isConnecting = false);
+  //   connected = ssh.getIsConnected();
+  // }
 
   Future<void> onDeactivatePressed() async {
     await ssh.disconnect(onLog: addLog);
@@ -209,11 +344,12 @@ class _MainLayoutState extends State<MainLayout> {
                 body: Row(
                   children: [
                     _LeftPanel(
-                      saveConnection: saveConnection,
+                      onAddConnection: createNewConnection,
                       userDataList: userDataList,
                       removeConnection: removeConnection,
                       onSelectConnection: onSelectConnection,
                       connected: connected,
+                      selectedIndex: selectedIndex,
                     ),
                     const VerticalDivider(width: 1),
                     Expanded(
@@ -244,6 +380,8 @@ class _MainLayoutState extends State<MainLayout> {
                           _BottomBar(
                             onDeactivate: onDeactivatePressed,
                             isConnecting:connected,
+                            onSave: saveConnection,
+                            onRefresh:refreshConnection,
                           ),
                         ],
                       ),
@@ -263,18 +401,20 @@ class _MainLayoutState extends State<MainLayout> {
 
 class _LeftPanel extends StatelessWidget {
   final List<UserData> userDataList;
-  final VoidCallback saveConnection;
+  final VoidCallback onAddConnection;
   final void Function(int) removeConnection;
-  final void Function(UserData) onSelectConnection;
+  final void Function(UserData, int) onSelectConnection;
   final bool connected;
+  final int? selectedIndex;
 
   const _LeftPanel({
     super.key,
-    required this.saveConnection,
+    required this.onAddConnection,
     required this.userDataList,
     required this.removeConnection,
     required this.onSelectConnection,
     required this.connected,
+    required this.selectedIndex,
     });
 
   @override
@@ -293,7 +433,7 @@ class _LeftPanel extends StatelessWidget {
                     //boton añadir
                 IconButton(
                   icon: const Icon(Icons.add),
-                  onPressed: saveConnection,
+                  onPressed: onAddConnection,
                 ),
               ],
             ),
@@ -322,7 +462,7 @@ class _LeftPanel extends StatelessWidget {
                             : null,
                         selected: index == 0,
                         onTap: () {
-                          onSelectConnection(user);
+                          onSelectConnection(user,index);
                         },
                       ),
                     );
@@ -680,11 +820,15 @@ class _LogOutputState extends State<_LogOutput> {
 class _BottomBar extends StatelessWidget {
   final VoidCallback onDeactivate;
   final bool isConnecting;
+  final VoidCallback onSave;
+  final VoidCallback onRefresh;
 
   const _BottomBar({
     super.key,
     required this.onDeactivate,
     required this.isConnecting,
+    required this.onSave,
+    required this.onRefresh,
   });
 
   @override
@@ -701,10 +845,20 @@ class _BottomBar extends StatelessWidget {
           // const SizedBox(width: 8),
           ElevatedButton(
             onPressed: onDeactivate,
-            child: const Text('Desactivate'),
+            child: const Text('Deactivate'),
           ),
           const SizedBox(width: 8),
-          OutlinedButton(onPressed: () {}, child: const Text('Refresh')),
+          ElevatedButton.icon(
+            onPressed: onSave,
+            icon: const Icon(Icons.save, size: 18),
+            label: const Text('Save'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color.fromARGB(255, 212, 64, 96),
+              foregroundColor: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(onPressed: onRefresh, child: const Text('Refresh')),
           const Spacer(),
           const Text('Status:'),
           const SizedBox(width: 8),

@@ -18,7 +18,8 @@ class SshService {
   required String host,
   required int port,
   required String username,
-  required String privateKeyPath,
+  required String? privateKeyPath,
+  required String? password,
   required List<PortRule> rules,
   required void Function(String) onLog,
 }) async {
@@ -28,14 +29,20 @@ class SshService {
     _socket = await SSHSocket.connect(host, port);
     onLog('[info] TCP socket opened');
 
-    final keyText = await File(privateKeyPath).readAsString();
-
+    //final keyText = await File(privateKeyPath).readAsString();
+    List<SSHKeyPair> identities = [];
+      if (privateKeyPath != null && privateKeyPath.isNotEmpty) {
+        final keyText = await File(privateKeyPath).readAsString();
+        identities = SSHKeyPair.fromPem(keyText);
+      }
+    
     _client = SSHClient(
       _socket!,
       username: username,
-      identities: [
-        ...SSHKeyPair.fromPem(keyText),
-      ],
+      identities: identities,
+      onPasswordRequest: password != null && password.isNotEmpty 
+            ? () => password 
+            : null,
     );
 
     onLog('[success] Connected!');
