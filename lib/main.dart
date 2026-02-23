@@ -229,58 +229,144 @@ class _MainLayoutState extends State<MainLayout> {
     });
   }
 
-  Future<void> onActivatePressed() async {
+  // Future<void> onActivatePressed() async {
     
-    if (host.isEmpty || user.isEmpty) {
-      addLog('[error] Missing data (Host or User)');
-      return;
-    }
+  //   if (host.isEmpty || user.isEmpty) {
+  //     addLog('[error] Missing data (Host or User)');
+  //     return;
+  //   }
 
-    //POP-UP DE CONTRASEÑA 
-    final String? password = await showDialog<String>(
+  //   //POP-UP DE CONTRASEÑA 
+  //   final String? password = await showDialog<String>(
+  //     context: context,
+  //     barrierDismissible: false, 
+  //     builder: (BuildContext dialogContext) {
+  //       final pwdController = TextEditingController();
+        
+  //       return AlertDialog(
+  //         backgroundColor: const Color.fromARGB(255, 50, 50, 50), 
+  //         title: const Text(
+  //           'Authentication Required', 
+  //           style: TextStyle(color: Colors.white, fontSize: 18)
+  //         ),
+  //         content: Column(
+  //           mainAxisSize: MainAxisSize.min, 
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             Text('Host: $host', style: const TextStyle(color: Colors.white70)),
+  //             Text('User: $user', style: const TextStyle(color: Colors.white70)),
+  //             Text('Port: $port', style: const TextStyle(color: Colors.white70)),
+  //             const SizedBox(height: 20),
+  //             TextField(
+  //               controller: pwdController,
+  //               obscureText: true, 
+  //               style: const TextStyle(color: Colors.white),
+  //               decoration: const InputDecoration(
+  //                 labelText: 'Password',
+  //                 labelStyle: TextStyle(color: Colors.white54),
+  //                 enabledBorder: OutlineInputBorder(
+  //                   borderSide: BorderSide(color: Colors.white24)
+  //                 ),
+  //                 focusedBorder: OutlineInputBorder(
+  //                   borderSide: BorderSide(color: Color.fromARGB(255, 212, 64, 96))
+  //                 ),
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //         actions: [
+  //           TextButton(
+  //             onPressed: () => Navigator.of(dialogContext).pop(null), 
+  //             child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+  //           ),
+  //           ElevatedButton(
+  //             onPressed: () => Navigator.of(dialogContext).pop(pwdController.text), 
+  //             style: ElevatedButton.styleFrom(
+  //               backgroundColor: const Color.fromARGB(255, 212, 64, 96),
+  //               foregroundColor: Colors.white,
+  //             ),
+  //             child: const Text('Accept'),
+  //           ),
+  //         ],
+  //       );
+  //     },
+  //   );
+
+  //   //COMPROBAMOS QUÉ HA HECHO EL USUARIO
+  //   if (password == null) {
+  //     addLog('[info] Connection cancelled by user.');
+  //     return; 
+  //   }
+
+  //   if (selectedIndex == null) return;
+  //   final int activeIndex = selectedIndex!;
+
+    
+  //   setState(() => connectingProfiles.add(activeIndex));
+
+    
+  //   if (!activeServices.containsKey(activeIndex)) {
+  //     activeServices[activeIndex] = SshService();
+  //   }
+
+  //   //CONECTAMOS
+  //   await activeServices[activeIndex]!.connect(
+  //     host: host,
+  //     port: port,
+  //     username: user,
+  //     privateKeyPath: privateKeyPath,
+  //     password: password, 
+  //     rules: rules, 
+  //     onLog: addLog,
+  //   );
+
+    
+  //   setState(() {
+  //     connectingProfiles.remove(activeIndex);
+      
+  //     if (activeServices[activeIndex]!.getIsConnected()) {
+  //       connectedProfiles.add(activeIndex);
+  //     }
+  //   });
+  // }
+
+  // --- NUEVA FUNCIÓN QUE SOLO SE EJECUTA SI SE LE LLAMA ---
+  Future<String?> promptForPassword() async {
+    return await showDialog<String>(
       context: context,
-      barrierDismissible: false, 
+      barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         final pwdController = TextEditingController();
-        
         return AlertDialog(
-          backgroundColor: const Color.fromARGB(255, 50, 50, 50), 
-          title: const Text(
-            'Authentication Required', 
-            style: TextStyle(color: Colors.white, fontSize: 18)
-          ),
+          backgroundColor: const Color.fromARGB(255, 50, 50, 50),
+          title: const Text('Authentication Required', style: TextStyle(color: Colors.white, fontSize: 18)),
           content: Column(
-            mainAxisSize: MainAxisSize.min, 
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Host: $host', style: const TextStyle(color: Colors.white70)),
               Text('User: $user', style: const TextStyle(color: Colors.white70)),
-              Text('Port: $port', style: const TextStyle(color: Colors.white70)),
               const SizedBox(height: 20),
               TextField(
                 controller: pwdController,
-                obscureText: true, 
+                obscureText: true,
                 style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
-                  labelText: 'Password',
+                  labelText: 'Password / Passphrase',
                   labelStyle: TextStyle(color: Colors.white54),
-                  enabledBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24)
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Color.fromARGB(255, 212, 64, 96))
-                  ),
+                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color.fromARGB(255, 212, 64, 96))),
                 ),
               ),
             ],
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(null), 
+              onPressed: () => Navigator.of(dialogContext).pop(null),
               child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.of(dialogContext).pop(pwdController.text), 
+              onPressed: () => Navigator.of(dialogContext).pop(pwdController.text),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color.fromARGB(255, 212, 64, 96),
                 foregroundColor: Colors.white,
@@ -291,46 +377,51 @@ class _MainLayoutState extends State<MainLayout> {
         );
       },
     );
+  }
 
-    //COMPROBAMOS QUÉ HA HECHO EL USUARIO
-    if (password == null) {
-      addLog('[info] Connection cancelled by user.');
-      return; 
-    }
-
+  // --- TU FUNCIÓN ACTIVATE REDUCIDA Y LIMPIA ---
+  Future<void> onActivatePressed() async {
     if (selectedIndex == null) return;
     final int activeIndex = selectedIndex!;
 
-    
+    if (host.isEmpty || user.isEmpty) {
+      addLog('[error] Missing data (Host or User)');
+      return;
+    }
+
+    // 1. Empezamos a conectar directamente (la rueda gira)
     setState(() => connectingProfiles.add(activeIndex));
 
-    
     if (!activeServices.containsKey(activeIndex)) {
       activeServices[activeIndex] = SshService();
     }
 
-    //CONECTAMOS
-    await activeServices[activeIndex]!.connect(
-      host: host,
-      port: port,
-      username: user,
-      privateKeyPath: privateKeyPath,
-      password: password, 
-      rules: rules, 
-      onLog: addLog,
-    );
+    try {
+      await activeServices[activeIndex]!.connect(
+        host: host,
+        port: port,
+        username: user,
+        privateKeyPath: privateKeyPath,
+        
+        // 2. LE PASAMOS LA FUNCIÓN (SIN EJECUTARLA) PARA QUE EL SSH LA USE SI LA NECESITA
+        onPasswordRequestUI: promptForPassword, 
+        
+        rules: rules,
+        onLog: addLog,
+      );
 
-    
-    setState(() {
-      connectingProfiles.remove(activeIndex);
-      
-      if (activeServices[activeIndex]!.getIsConnected()) {
-        connectedProfiles.add(activeIndex);
-      }
-    });
+      // Si termina todo bien, lo marcamos conectado
+      setState(() {
+        if (activeServices[activeIndex]!.getIsConnected()) {
+          connectedProfiles.add(activeIndex);
+        }
+      });
+    } catch (e) {
+      addLog('[error] Connection failed: $e');
+    } finally {
+      setState(() => connectingProfiles.remove(activeIndex));
+    }
   }
-
-  
 
   Future<void> onDeactivatePressed() async {
       if (selectedIndex == null) return;

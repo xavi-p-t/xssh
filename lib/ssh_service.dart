@@ -19,7 +19,7 @@ class SshService {
   required int port,
   required String username,
   required String? privateKeyPath,
-  required String? password,
+  required Future<String?> Function() onPasswordRequestUI,
   required List<PortRule> rules,
   required void Function(String) onLog,
 }) async {
@@ -31,19 +31,42 @@ class SshService {
 
     
     List<SSHKeyPair> identities = [];
-      if (privateKeyPath != null && privateKeyPath.isNotEmpty) {
-        final keyText = await File(privateKeyPath).readAsString();
-        identities = SSHKeyPair.fromPem(keyText);
-      }
     
-    _client = SSHClient(
-      _socket!,
-      username: username,
-      identities: identities,
-      onPasswordRequest: password != null && password.isNotEmpty 
-            ? () => password 
-            : null,
-    );
+    if (privateKeyPath != null && privateKeyPath.isNotEmpty) {
+        final keyText = await File(privateKeyPath).readAsString();
+        
+        try {
+          // Intentamos cargarla de forma transparente primero
+          identities = SSHKeyPair.fromPem(keyText);
+        } catch (e) {
+          // Si da error, asumimos que está encriptada. Llamamos al Pop-up de tu main.dart
+          onLog('[info] La llave privada requiere contraseña. Esperando input...');
+          
+          final pwd = await onPasswordRequestUI(); // <-- SALTA EL POP-UP
+          
+          if (pwd != null && pwd.isNotEmpty) {
+            identities = SSHKeyPair.fromPem(keyText, pwd); // La abrimos con lo que has escrito
+          } else {
+            throw Exception('Se canceló la contraseña de la llave.');
+          }
+        }
+      }
+
+      // --- CREACIÓN DEL CLIENTE SSH ---
+      _client = SSHClient(
+        _socket!,
+        username: username,
+        identities: identities,
+        
+        // Si el servidor nos pide contraseña (por no usar llave o por seguridad extra)
+        onPasswordRequest: () async {
+          onLog('[info] El servidor solicita contraseña de usuario. Esperando input...');
+          
+          final pwd = await onPasswordRequestUI(); // <-- SALTA EL POP-UP
+          
+          return pwd ?? ''; // Si cancelas, devuelve vacío para abortar
+        },
+      );
 
     onLog('[success] Connected!');
 
