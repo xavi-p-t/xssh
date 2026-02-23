@@ -29,7 +29,7 @@ class SshService {
     _socket = await SSHSocket.connect(host, port);
     onLog('[info] TCP socket opened');
 
-    //final keyText = await File(privateKeyPath).readAsString();
+    
     List<SSHKeyPair> identities = [];
       if (privateKeyPath != null && privateKeyPath.isNotEmpty) {
         final keyText = await File(privateKeyPath).readAsString();
@@ -47,7 +47,7 @@ class SshService {
 
     onLog('[success] Connected!');
 
-    // --- INICIO LÓGICA DE TÚNELES (PORT FORWARDING) ---
+    // INICIO LOGICA DE TÚNELES
       for (var rule in rules) {
         
         if (rule.localPort.isEmpty || rule.destHost.isEmpty || rule.destPort.isEmpty) {
@@ -63,19 +63,19 @@ class SshService {
         if (localPort == 0 || destPort == 0) continue;
 
         try {
-          // 1. Abrimos el puerto en nuestro propio dispositivo
+         
           final localServer = await ServerSocket.bind('127.0.0.1', localPort);
-          _localServers.add(localServer); // Lo guardamos para poder cerrarlo luego
+          _localServers.add(localServer); 
           
           onLog('[info] Tunnel opened: 127.0.0.1:$localPort -> $destHost:$destPort (${rule.name})');
 
-          // 2. Escuchamos el tráfico que nos llega a ese puerto local
+          
           localServer.listen((Socket localSocket) async {
             try {
-              // 3. Le pedimos al servidor SSH que nos abra un canal hacia el destino
+              
               final forward = await _client!.forwardLocal(destHost, destPort);
               
-              // 4. Conectamos los cables de ida y vuelta
+             
               forward.stream.cast<List<int>>().pipe(localSocket).catchError((_) {});
               localSocket.cast<List<int>>().pipe(forward.sink).catchError((_) {});
             } catch (e) {
@@ -85,11 +85,11 @@ class SshService {
           });
           
         } catch (e) {
-          // Error típico: el puerto local ya está ocupado por otra app
+          
           onLog('[error] Failed to bind local port $localPort (${rule.name}): $e');
         }
       }
-      // --- FIN LÓGICA DE TÚNELES ---
+    
     
   } catch (e) {
     onLog('[error] $e');

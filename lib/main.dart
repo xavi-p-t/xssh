@@ -4,6 +4,7 @@ import 'package:xssh/ssh_service.dart';
 import 'package:xssh/SaveServer.dart';
 import 'package:xssh/inputPers.dart';
 import 'package:xssh/portRules.dart';
+import 'package:xssh/OllamaChatPannel.dart';
 
 void main() {
   runApp(const SshTunelApp());
@@ -40,9 +41,16 @@ class _MainLayoutState extends State<MainLayout> {
   int port = 0;
   String? privateKeyPath;
 
-  // Aquí luego meteremos SshService, de momento solo print
+  
   bool isConnecting = false;
   bool connected = false;
+
+  Map<int, SshService> activeServices = {};
+
+  Set<int> connectedProfiles = {};
+  Set<int> connectingProfiles = {};
+
+
   late TextEditingController privateKeyController;
   late TextEditingController hostController;
   late TextEditingController userController;
@@ -51,8 +59,7 @@ class _MainLayoutState extends State<MainLayout> {
   int? selectedIndex;
 
 
-  final ssh = SshService();
-
+ 
   List<String> logs = [];
   List<UserData> userDataList = [];
   List<PortRule> rules = [];
@@ -174,22 +181,36 @@ class _MainLayoutState extends State<MainLayout> {
     Storage.saveUserData(userDataList);
   }
 
- void onSelectConnection(UserData data, int index) {
-    setState(() {
-      selectedIndex = index; 
-      
-      host = data.server;
-      user = data.name;
-      port = data.port;
-      privateKeyPath = data.key;
-
-      hostController.text = data.server; 
-      userController.text = data.name; 
-      portController.text = data.port.toString();
-      privateKeyController.text = data.key ?? '';
-      rules = List.from(data.rules);
-    });
+  void removeConnectionByName(String name) {
+    
+    final index = userDataList.indexWhere(
+      (u) => u.name.toLowerCase().trim() == name.toLowerCase().trim()
+    );
+    
+    if (index != -1) {
+      removeConnection(index); 
+      addLog('[info] Ollama ha borrado la conexión: $name');
+    } else {
+      addLog('[warning] Ollama intentó borrar "$name" pero no existe en la lista.');
+    }
   }
+
+  void onSelectConnection(UserData data, int index) {
+      setState(() {
+        selectedIndex = index; 
+        
+        host = data.server;
+        user = data.name;
+        port = data.port;
+        privateKeyPath = data.key;
+
+        hostController.text = data.server; 
+        userController.text = data.name; 
+        portController.text = data.port.toString();
+        privateKeyController.text = data.key ?? '';
+        rules = List.from(data.rules);
+      });
+    }
 
 
   void onHostChanged(String value) => setState(() => host = value);
@@ -209,27 +230,27 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   Future<void> onActivatePressed() async {
-    // Relajamos un poco la validación por si ahora usan contraseña en vez de llave
+    
     if (host.isEmpty || user.isEmpty) {
       addLog('[error] Missing data (Host or User)');
       return;
     }
 
-    // --- 1. LANZAMOS EL POP-UP DE CONTRASEÑA ---
+    //POP-UP DE CONTRASEÑA 
     final String? password = await showDialog<String>(
       context: context,
-      barrierDismissible: false, // Obliga al usuario a pulsar un botón para salir
+      barrierDismissible: false, 
       builder: (BuildContext dialogContext) {
         final pwdController = TextEditingController();
         
         return AlertDialog(
-          backgroundColor: const Color.fromARGB(255, 50, 50, 50), // Fondo oscuro
+          backgroundColor: const Color.fromARGB(255, 50, 50, 50), 
           title: const Text(
             'Authentication Required', 
             style: TextStyle(color: Colors.white, fontSize: 18)
           ),
           content: Column(
-            mainAxisSize: MainAxisSize.min, // Para que el pop-up no ocupe toda la pantalla
+            mainAxisSize: MainAxisSize.min, 
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Host: $host', style: const TextStyle(color: Colors.white70)),
@@ -238,7 +259,7 @@ class _MainLayoutState extends State<MainLayout> {
               const SizedBox(height: 20),
               TextField(
                 controller: pwdController,
-                obscureText: true, // Oculta el texto con asteriscos
+                obscureText: true, 
                 style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
                   labelText: 'Password',
@@ -255,11 +276,11 @@ class _MainLayoutState extends State<MainLayout> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(null), // Devuelve null si cancela
+              onPressed: () => Navigator.of(dialogContext).pop(null), 
               child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.of(dialogContext).pop(pwdController.text), // Devuelve el texto
+              onPressed: () => Navigator.of(dialogContext).pop(pwdController.text), 
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color.fromARGB(255, 212, 64, 96),
                 foregroundColor: Colors.white,
@@ -271,64 +292,110 @@ class _MainLayoutState extends State<MainLayout> {
       },
     );
 
-    // --- 2. COMPROBAMOS QUÉ HA HECHO EL USUARIO ---
+    //COMPROBAMOS QUÉ HA HECHO EL USUARIO
     if (password == null) {
-      // El usuario le dio a "Cancel" o intentó cerrar el pop-up
       addLog('[info] Connection cancelled by user.');
       return; 
     }
 
-    // Si llega aquí, es que le dio a "Accept" (la contraseña puede estar vacía o llena)
-    setState(() => isConnecting = true);
+    if (selectedIndex == null) return;
+    final int activeIndex = selectedIndex!;
 
-    // --- 3. NOS CONECTAMOS PASÁNDOLE LA CONTRASEÑA ---
-    await ssh.connect(
+    
+    setState(() => connectingProfiles.add(activeIndex));
+
+    
+    if (!activeServices.containsKey(activeIndex)) {
+      activeServices[activeIndex] = SshService();
+    }
+
+    //CONECTAMOS
+    await activeServices[activeIndex]!.connect(
       host: host,
       port: port,
       username: user,
-      privateKeyPath: privateKeyPath, // Sigue siendo útil si combinan llave + password
-      password: password, // <-- NUEVO PARÁMETRO
+      privateKeyPath: privateKeyPath,
+      password: password, 
       rules: rules, 
       onLog: addLog,
     );
 
-    setState(() => isConnecting = false);
-    connected = ssh.getIsConnected();
+    
+    setState(() {
+      connectingProfiles.remove(activeIndex);
+      
+      if (activeServices[activeIndex]!.getIsConnected()) {
+        connectedProfiles.add(activeIndex);
+      }
+    });
   }
 
-  // Future<void> onActivatePressed() async {
-  //   if (host.isEmpty || user.isEmpty || privateKeyPath == null) {
-  //     addLog('[error] Missing data');
-  //     return;
-  //   }
-
-  //   setState(() => isConnecting = true);
-
-  //   await ssh.connect(
-  //     host: host,
-  //     port: port,
-  //     username: user,
-  //     privateKeyPath: privateKeyPath!,
-  //     rules: rules,
-  //     onLog: addLog,
-  //   );
-
-  //   setState(() => isConnecting = false);
-  //   connected = ssh.getIsConnected();
-  // }
+  
 
   Future<void> onDeactivatePressed() async {
-    await ssh.disconnect(onLog: addLog);
-    connected = ssh.getIsConnected();
+      if (selectedIndex == null) return;
+      final int activeIndex = selectedIndex!;
+
+
+      if (activeServices.containsKey(activeIndex)) {
+        await activeServices[activeIndex]!.disconnect(onLog: addLog);
+      }
+      
+
+      setState(() {
+        connectedProfiles.remove(activeIndex);
+      });
   }
 
+  //FUNCION ACTIVAR PARA LA IA
+  Future<void> activateConnectionByName(String name) async {
+   
+    final index = userDataList.indexWhere(
+      (u) => u.name.toLowerCase().trim() == name.toLowerCase().trim()
+    );
+    
+    if (index != -1) {
+      
+      onSelectConnection(userDataList[index], index);
+      addLog('[info] La IA está intentando conectar: $name');
+      
+      
+      await onActivatePressed();
+    } else {
+      addLog('[warning] La IA intentó conectar "$name" pero no existe en la lista.');
+    }
+  }
+  //FUNCION DESACTIVAR PARA LA IA
+  Future<void> deactivateConnectionByName(String name) async {
+    final index = userDataList.indexWhere(
+      (u) => u.name.toLowerCase().trim() == name.toLowerCase().trim()
+    );
+    
+    if (index != -1) {
+      
+      if (activeServices.containsKey(index)) {
+        await activeServices[index]!.disconnect(onLog: addLog);
+        setState(() {
+          connectedProfiles.remove(index);
+        });
+        addLog('[info] La IA ha apagado la conexión: $name');
+      } else {
+        addLog('[info] La IA intentó apagar "$name" pero ya estaba desconectado.');
+      }
+    } else {
+      addLog('[warning] La IA intentó desconectar "$name" pero no existe.');
+    }
+  }
 
 
   @override
   Widget build(BuildContext context) {
+    final bool isCurrentConnecting = selectedIndex != null && connectingProfiles.contains(selectedIndex);
+    final bool isCurrentConnected = selectedIndex != null && connectedProfiles.contains(selectedIndex);
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Escala basada en el ancho de la ventana
+        
         final scale = (constraints.maxWidth / 1400).clamp(0.5, 1.0);
 
         return FittedBox(
@@ -348,7 +415,7 @@ class _MainLayoutState extends State<MainLayout> {
                       userDataList: userDataList,
                       removeConnection: removeConnection,
                       onSelectConnection: onSelectConnection,
-                      connected: connected,
+                      connectedProfiles: connectedProfiles,
                       selectedIndex: selectedIndex,
                     ),
                     const VerticalDivider(width: 1),
@@ -370,7 +437,7 @@ class _MainLayoutState extends State<MainLayout> {
                               onPortChanged: onPortChanged,
                               onPrivateKeySelected: onPrivateKeySelected,
                               onActivate: onActivatePressed,
-                              isConnecting: isConnecting,
+                              isConnecting: isCurrentConnecting,
                               logs: logs,
                               rules: rules,
                               onAddRule: addRule,
@@ -379,12 +446,23 @@ class _MainLayoutState extends State<MainLayout> {
                           ),
                           _BottomBar(
                             onDeactivate: onDeactivatePressed,
-                            isConnecting:connected,
+                            isConnecting:isCurrentConnected,
                             onSave: saveConnection,
                             onRefresh:refreshConnection,
                           ),
                         ],
                       ),
+                    ),
+                    const VerticalDivider(width: 1),
+
+                    SizedBox(
+                      width: 320,
+                      child: OllamaChatPanel(
+                        onCreateConnection: createNewConnection, 
+                        onDeleteConnection: removeConnectionByName,
+                        onConnectConnection: activateConnectionByName,   
+                        onDisconnectConnection: deactivateConnectionByName,
+                      ),  
                     ),
                   ],
                 ),
@@ -404,7 +482,7 @@ class _LeftPanel extends StatelessWidget {
   final VoidCallback onAddConnection;
   final void Function(int) removeConnection;
   final void Function(UserData, int) onSelectConnection;
-  final bool connected;
+  final Set<int> connectedProfiles;
   final int? selectedIndex;
 
   const _LeftPanel({
@@ -413,7 +491,7 @@ class _LeftPanel extends StatelessWidget {
     required this.userDataList,
     required this.removeConnection,
     required this.onSelectConnection,
-    required this.connected,
+    required this.connectedProfiles,
     required this.selectedIndex,
     });
 
@@ -445,6 +523,7 @@ class _LeftPanel extends StatelessWidget {
               itemBuilder: (context, index) {
                 bool hovering = false;
                 final user = userDataList[index];
+                final bool isThisConnected = connectedProfiles.contains(index);
                 return StatefulBuilder(
                   builder: (context, setState) {
                     return MouseRegion(
@@ -453,7 +532,7 @@ class _LeftPanel extends StatelessWidget {
                       child: ListTile(
                         title: Text(user.name),
                         subtitle:Text(user.server),
-                        leading:  Icon(Icons.circle, size: 10, color: connected ? Colors.green.shade700:Colors.red.shade700),
+                        leading:  Icon(Icons.circle, size: 10, color: isThisConnected ? Colors.green.shade700:Colors.red.shade700),
                         trailing: hovering
                             ? IconButton(
                                 icon: const Icon(Icons.delete),
@@ -615,9 +694,9 @@ class _ConnectionForm extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color.fromARGB(82, 188, 186, 186),        // Fondo oscuro
+          color: const Color.fromARGB(82, 188, 186, 186),     
           borderRadius: BorderRadius.circular(12),
-          //border: Border.all(color: Colors.grey.shade700),
+         
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -630,7 +709,7 @@ class _ConnectionForm extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
-                    //color: Colors.white,
+                    
                   ),
                 ),
                 ElevatedButton(
@@ -649,7 +728,7 @@ class _ConnectionForm extends StatelessWidget {
                   width: 80,
                   child: Text(
                     'HOST',
-                    //style: TextStyle(color: Color.fromARGB(179, 0, 0, 0)),
+                    
                   ),
                 ),
                 Expanded(
@@ -671,7 +750,7 @@ class _ConnectionForm extends StatelessWidget {
                   width: 80,
                   child: Text(
                     'USER',
-                    //style: TextStyle(color: Colors.white70),
+                    
                   ),
                 ),
                 Expanded(
@@ -693,7 +772,7 @@ class _ConnectionForm extends StatelessWidget {
                   width: 80,
                   child: Text(
                     'PORT',
-                    //style: TextStyle(color: Colors.white70),
+                    
                   ),
                 ),
                 SizedBox(
@@ -717,7 +796,7 @@ class _ConnectionForm extends StatelessWidget {
                   width: 80,
                   child: Text(
                     'KEY',
-                    //style: TextStyle(color: Colors.white70),
+                    
                   ),
                 ),
                 Expanded(
@@ -841,8 +920,7 @@ class _BottomBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // ElevatedButton(onPressed: () {}, child: const Text('Activate')),
-          // const SizedBox(width: 8),
+          
           ElevatedButton(
             onPressed: onDeactivate,
             child: const Text('Deactivate'),
